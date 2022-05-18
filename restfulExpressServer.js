@@ -3,105 +3,80 @@ const fs = require("fs");
 const app = express();
 const port = 8000;
 app.use(express.json());
-
-app.get("/pets", (req, res) => {
-    fs.readFile("pets.json", "utf8", (error, data) => {
-        if (error) {
-            console.log(error);
-        } else {
-            jsonObj = JSON.parse(data);
-            res.send(jsonObj);
-        }
-    });
+const { Pool } = require('pg');
+const pool = new Pool({
+    user: 'postgres',
+    host: 'localhost',
+    database: 'petshop',
+    password: 'password',
+    port: 5432,
 });
 
-app.get("/pets/:id", (req, res) => {
-    fs.readFile("pets.json", "utf8", (error, data) => {
-        if (error) {
-            res.send(error);
-        } else {
-            jsonObj = JSON.parse(data);
-            if (req.params.id >= jsonObj.length || req.params.id < 0) {
-                res.status(404).json({ message: "not found" });
-            }
-            res.send(jsonObj[req.params.id]);
-        }
-    });
+app.get("/pets", async (req, res) => {
+    try {
+        const data = await pool.query('SELECT * FROM pets;')
+        res.json(data.rows);
+    } catch (err) {
+        res.json(err);
+    }
 });
 
-app.post("/pets", (req, res) => {
-    fs.readFile("pets.json", "utf8", (error, data) => {
-        if (error) {
-            res.send(error);
+app.get("/pets/:id", async (req, res) => {
+    try {
+        const data = await pool.query(`SELECT * FROM pets WHERE id=$1;`, [req.params.id])
+        //console.log(`data.length=${data.rows.length}`);
+        if (data.rows.length === 0) {
+            res.statusCode = 404;
+            res.send("not found");
         } else {
-            jsonArr = JSON.parse(data);
-            let reqBody = req.body;
-            const obj = {
-                age: parseInt(reqBody.age),
-                kind: `${reqBody.kind}`,
-                name: `${reqBody.name}`,
-            };
-
-            jsonArr.push(obj);
-            const input = JSON.stringify(jsonArr);
-            fs.writeFile("pets.json", input, (error) => {
-                if (error) {
-                    res.send(error);
-                } else {
-                    res.send(jsonArr[req.params.id]);
-                }
-            });
+            res.json(data.rows);
         }
-    });
+    } catch (err) {
+        res.json(err)
+    }
 });
 
-app.patch("/pets/:id", (req, res) => {
-    fs.readFile("pets.json", "utf8", (error, data) => {
-        if (error) {
-            res.send(error);
-        } else {
-            jsonArr = JSON.parse(data);
-            let reqBody = req.body;            
-            jsonArr[req.params.id].name = reqBody.name;
-            const input = JSON.stringify(jsonArr);
-            fs.writeFile("pets.json", input, (error) => {
-                if (error) {
-                    res.send(error);
-                } else {
-                    res.send(jsonArr[req.params.id]);
-                }
-            });
-        }
-    });
+app.post("/pets", async (req, res) => {
+    try {
+        pool.query('INSERT INTO pets (name, age, kind) VALUES ($1, $2, $3);',[req.body.name, req.body.age, req.body.kind]);
+        res.json(req.body);
+    } catch (error) {
+        res.json(error);
+    }
 });
 
-app.delete("/pets/:id", (req, res) => {
-    fs.readFile("pets.json", "utf8", (error, data) => {
-        if (error) {
-            res.send(error);
-        } else {
-            jsonArr = JSON.parse(data);
-            let responseBody = jsonArr[req.params.id]           
-            jsonArr.splice(req.params.id, 1);
-            const input = JSON.stringify(jsonArr);
-            fs.writeFile("pets.json", input, (error) => {
-                if (error) {
-                    res.send(error);
-                } else {
-                    res.send(responseBody);
-                }
-            });
+app.patch("/pets/:id", async (req, res) => {
+    try {
+        const data = await pool.query('SELECT * FROM pets WHERE id=$1;', [req.params.id]);        
+        let updateName = req.body.name || data.rows[0].name;
+        let updateAge = req.body.age || data.rows[0].age;
+        let updateKind = req.body.kind || data.rows[0].kind;
+        await pool.query('UPDATE pets SET(name, age, kind) = ($1, $2, $3) WHERE id=$4;', [updateName, updateAge, updateKind, req.params.id]);
+        let returnObj = {
+            name: `${updateName}`,
+            age: `${updateAge}`,
+            kind: `${updateKind}`
         }
-    });
+        res.json(returnObj);
+    } catch (error) {
+        res.json(error);
+    }
+});
+
+app.delete("/pets/:id", async (req, res) => {
+    try{
+        const data = await pool.query('SELECT * FROM pets WHERE id=$1;', [req.params.id]);
+        if (data.rows.length === 0) {
+            res.statusCode = 404;
+            res.send("not found");
+        }
+        await pool.query('DELETE FROM pets WHERE id=$1;', [req.params.id]);
+        res.json(data.rows[0]);
+    } catch (error) {
+        res.json(error);
+    }
 });
 
 app.listen(port, function () {
     console.log(`Listening on Port: ${port}`);
 });
-
-
-
-
-
-
-
